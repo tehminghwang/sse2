@@ -8,16 +8,19 @@ function App() {
   return (
     <div>
       <Posts />
-      <AddUser />
-      <UpdateUser />
-      <RemoveUser />
-      <Errorhandling />
     </div>
   );
 }
 
 export default App;
 
+
+/*
+      <AddUser />
+      <UpdateUser />
+      <RemoveUser />
+      <Errorhandling />
+*/
 
 /*
 import logo from './logo.svg';

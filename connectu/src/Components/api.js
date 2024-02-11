@@ -1,5 +1,5 @@
 import axios from 'axios';
 
 export default axios.create({
-  baseURL: `http://jsonplaceholder.typicode.com/`
+  baseURL: `https://my-json-server.typicode.com/tehminghwang/database/`
 });
