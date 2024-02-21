@@ -9,6 +9,8 @@ function Posts() {
   const [searchTerm, setSearchTerm] = useState('');
   const [sortPreference, setSortPreference] = useState('latest');
   const [showCommentsForPost, setShowCommentsForPost] = useState({}); 
+  const [newComment, setNewComment] = useState(''); 
+  const [addingCommentToPostId, setAddingCommentToPostId] = useState(null); 
 
   useEffect(() => {
     api.get("/api/enhanced-xposts", {
@@ -89,7 +91,29 @@ function Posts() {
       return newState;
     });
   };
-  
+
+  const addComment = (postId) => {
+    const commentUserId = comments[postId] ? comments[postId].length + 1 : 1; 
+    const commentTimestamp = new Date().toISOString();
+
+    api.post('/api/comments', {
+      postid: postId,
+      comment_userid: commentUserId,
+      comment_timestamp: commentTimestamp,
+      comment: newComment,
+    })
+    .then(response => {
+      // Assuming the response includes the newly added comment
+      const newComment = response.data;
+      setComments(prevComments => ({
+        ...prevComments,
+        [postId]: [...(prevComments[postId] || []), newComment],
+      }));
+      setNewComment(''); // Clear the new comment input field
+      setAddingCommentToPostId(null); // Reset the addingCommentToPostId to hide the input field
+    })
+    .catch(error => console.error(`Error adding comment to post ${postId}:`, error));
+  };
 
   return (
     <div>
@@ -126,15 +150,27 @@ function Posts() {
           <button onClick={() => toggleCommentsVisibility(post.postid)}>
             {showCommentsForPost[post.postid] ? 'Hide Comments' : 'Show Comments'}
           </button>
-          {showCommentsForPost[post.postid] && comments[post.postid] && (
+          {showCommentsForPost[post.postid] && (
             <div>
               <strong>Comments:</strong>
-              {comments[post.postid].map((comment) => (
+              {/* Comments list */}
+              {comments[post.postid]?.map((comment) => (
                 <div key={comment.commentid} style={{ marginTop: '5px', paddingLeft: '10px' }}>
                   <p>{comment.comment}</p>
                   <p>Comment by: User {comment.comment_userid} on {new Date(comment.comment_timestamp).toLocaleDateString()}</p>
                 </div>
               ))}
+              {addingCommentToPostId === post.postid && (
+                <>
+                  <textarea
+                    value={newComment}
+                    onChange={(e) => setNewComment(e.target.value)}
+                    placeholder="Write a comment..."
+                  />
+                  <button onClick={() => addComment(post.postid)}>Submit Comment</button>
+                </>
+              )}
+              <button onClick={() => setAddingCommentToPostId(post.postid)}>Add Comment</button>
             </div>
           )}
         </div>
@@ -144,3 +180,5 @@ function Posts() {
 }
 
 export default Posts;
+
+
