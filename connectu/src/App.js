@@ -1,7 +1,3 @@
-import AddUser from "./Components/AddUser";
-import Errorhandling from "./Components/Errorhandling";
-import RemoveUser from "./Components/RemoveUser";
-import UpdateUser from "./Components/UpdateUser";
 import Posts from "./Components/Posts";
 
 function App() {

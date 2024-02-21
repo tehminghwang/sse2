@@ -1,83 +1,93 @@
 import React, { useEffect, useState } from "react";
-import api from "./api"; 
-import subscribeToPost from "./SubscribeUser"; 
+import api from "./api";
 
 function Posts() {
   const [posts, setPosts] = useState([]);
-  const [comments, setComments] = useState([]);
-  const [tags, setTags] = useState([]);
-  const [selectedTags, setSelectedTags] = useState([]);
-  const [searchTerm, setSearchTerm] = useState(''); 
+  const [comments, setComments] = useState({});
+  const [interests, setInterests] = useState([]);
+  const [selectedInterests, setSelectedInterests] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
   const [sortPreference, setSortPreference] = useState('latest');
-  const [showCommentsForPost, setShowCommentsForPost] = useState({});
+  const [showCommentsForPost, setShowCommentsForPost] = useState({}); 
 
   useEffect(() => {
-    api.get("/posts")
-      .then(response => {
-        setPosts(response.data);
-        const allTags = new Set(response.data.flatMap(post => post.tags));
-        setTags([...allTags]);
-        const initialShowCommentsState = {};
-        response.data.forEach(post => {
-          initialShowCommentsState[post.id] = false;
-        });
-        setShowCommentsForPost(initialShowCommentsState);
-      });
-
-    api.get("/comments")
-      .then(response => {
-        setComments(response.data);
-      });
+    api.get("/api/enhanced-xposts", {
+      params: {
+        num: 10,
+        sortField: 'last_update_timestamp',
+        sortOrder: 'asc'
+      }
+    })
+    .then(response => {
+      setPosts(response.data.posts);
+      const allInterests = new Set(response.data.posts.flatMap(post => post.interest));
+      setInterests([...allInterests]);
+    })
+    .catch(error => console.error("Error fetching posts:", error));
   }, []);
 
-  const subscribe = (postId) => {
-    const randomEmail = `user${Math.floor(Math.random() * 1000)}@example.com`; // Generate a random email
-    subscribeToPost(postId, randomEmail) // Call the subscribe function
-      .then(() => {
-        // Ideally, fetch the updated post data here to reflect the new subscription count
-        console.log(`Subscribed ${randomEmail} to post ${postId}`);
-        // For demonstration, just trigger a re-fetch of posts data
-        api.get("/posts").then(response => {
-          setPosts(response.data);
-        });
-      })
-      .catch(err => console.error(err));
+  const handleInterestClick = (interest) => { 
+    if (selectedInterests.includes(interest)) {
+      setSelectedInterests(selectedInterests.filter(i => i !== interest));
+    } else {
+      setSelectedInterests([...selectedInterests, interest]);
+    }
   };
 
-  const handleSearchChange = (e) => {
+  const handleSearchChange = (e) => { 
     setSearchTerm(e.target.value);
   };
 
-  const handleTagClick = (tag) => {
-    if (selectedTags.includes(tag)) {
-      setSelectedTags(selectedTags.filter(t => t !== tag));
-    } else {
-      setSelectedTags([...selectedTags, tag]);
-    }
+  const fetchCommentsForPost = (postId) => {
+    api.get(`/api/comments`, { params: { postid: postId } })
+      .then(response => {
+        console.log(`Comments for post ${postId}:`, response.data.comments);
+        setComments(prevComments => ({
+          ...prevComments,
+          [postId]: response.data.comments
+        }));
+      })
+      .catch(error => console.error(`Error fetching comments for post ${postId}:`, error));
   };
-
-  const toggleCommentsVisibility = (postId) => {
-    setShowCommentsForPost(prevState => ({
-      ...prevState,
-      [postId]: !prevState[postId]
-    }));
-  };
+  
 
   const getFilteredAndSortedPosts = () => {
     let filteredPosts = posts.filter(post =>
-      (post.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      post.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      post.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()))) &&
-      (selectedTags.length === 0 || post.tags.some(tag => selectedTags.includes(tag)))
+      (post.header?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+       post.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+       post.interest?.toLowerCase().includes(searchTerm.toLowerCase())) &&
+      (selectedInterests.length === 0 || selectedInterests.includes(post.interest))
     );
   
     if (sortPreference === 'popular') {
-      filteredPosts.sort((a, b) => b.likes - a.likes);
+      filteredPosts.sort((a, b) => b.number_of_likes - a.number_of_likes);
     } else {
-      filteredPosts.sort((a, b) => new Date(b.dateCreated) - new Date(a.dateCreated));
+      filteredPosts.sort((a, b) => new Date(b.last_update_timestamp) - new Date(a.last_update_timestamp));
     }
   
     return filteredPosts;
+  };
+  
+
+  const subscribe = (postId) => { // Define subscribe function
+    console.log(`Subscribing to post ${postId}`);
+    // Implement subscription logic here
+  };
+
+  const toggleCommentsVisibility = (postId) => {
+    setShowCommentsForPost(prevState => {
+      const isVisible = prevState[postId];
+      const newState = { ...prevState, [postId]: !isVisible };
+  
+      console.log(`Toggling visibility for post ${postId}. Will show: ${!isVisible}`);
+  
+      if (!isVisible && !comments[postId]) {
+        console.log(`Fetching comments for post ${postId}`);
+        fetchCommentsForPost(postId);
+      }
+  
+      return newState;
+    });
   };
   
 
@@ -95,35 +105,34 @@ function Posts() {
       <div>
         <strong>Sort by:</strong>
         <button onClick={() => setSortPreference('latest')} style={{ margin: '5px', backgroundColor: sortPreference === 'latest' ? '#ADD8E6' : '' }}>Latest</button>
-        <button onClick={() => setSortPreference('popular')} style={{ margin: '5px', backgroundColor: sortPreference === 'popular' ? '#ADD8E6' : '' }}>Most Popular</button>
+        <button onClick={() => setSortPreference('popular')} style={{ margin: '5px', backgroundColor: sortPreference === 'popular' ? '#ADD8E6' : '' }}>Most Liked Posts</button>
       </div>
       <div>
-        <strong>Filter by Tags:</strong>
-        {tags.map((tag, index) => (
-          <button key={index} onClick={() => handleTagClick(tag)} style={{ margin: '5px', backgroundColor: selectedTags.includes(tag) ? '#ADD8E6' : '' }}>
-            {tag}
+        <strong>Filter by Interests:</strong> 
+        {interests.map((interest, index) => (
+          <button key={index} onClick={() => handleInterestClick(interest)} style={{ margin: '5px', backgroundColor: selectedInterests.includes(interest) ? '#ADD8E6' : '' }}> {/* 4. Use selectedInterests */}
+            {interest}
           </button>
         ))}
       </div>
       {getFilteredAndSortedPosts().map((post) => (
-        <div key={post.id} style={{ marginBottom: '20px', border: '1px solid #ccc', padding: '10px' }}>
-          <h2>{post.title}</h2>
+        <div key={post.postid} style={{ marginBottom: '20px', border: '1px solid #ccc', padding: '10px' }}>
+          <h2>{post.header} (#{post.postid})</h2>
           <p>{post.description}</p>
-          <p>Tags: {post.tags.join(', ')}</p>
-          <p>Posted by: {post.username} on {new Date(post.dateCreated).toLocaleDateString()}</p>
-          <p>Likes: {post.likes}</p>
-          <p>Subscribers: {post.subscribers.length}</p> 
-          <button onClick={() => subscribe(post.id)}>Subscribe</button> 
-          <button onClick={() => toggleCommentsVisibility(post.id)} style={{ display: 'block', margin: '10px 0' }}>
-            {showCommentsForPost[post.id] ? 'Hide Comments' : 'Show Comments'}
+          <p>Interest: {post.interest}</p> 
+          <p>Posted by: {post.firstname} {post.lastname} ({post.userid}) at {post.university} on {new Date(post.create_timestamp).toLocaleDateString()}</p>
+          <p>Likes: {post.number_of_likes}</p>
+          <button onClick={() => subscribe(post.postid)}>Click to Like</button> 
+          <button onClick={() => toggleCommentsVisibility(post.postid)}>
+            {showCommentsForPost[post.postid] ? 'Hide Comments' : 'Show Comments'}
           </button>
-          {showCommentsForPost[post.id] && (
+          {showCommentsForPost[post.postid] && comments[post.postid] && (
             <div>
               <strong>Comments:</strong>
-              {comments.filter(comment => comment.postId === post.id).map((comment) => (
-                <div key={comment.id} style={{ marginTop: '5px', paddingLeft: '10px' }}>
-                  <p>{comment.body}</p>
-                  <p>Comment by: {comment.username} on {new Date(comment.dateCreated).toLocaleDateString()}</p>
+              {comments[post.postid].map((comment) => (
+                <div key={comment.commentid} style={{ marginTop: '5px', paddingLeft: '10px' }}>
+                  <p>{comment.comment}</p>
+                  <p>Comment by: User {comment.comment_userid} on {new Date(comment.comment_timestamp).toLocaleDateString()}</p>
                 </div>
               ))}
             </div>
