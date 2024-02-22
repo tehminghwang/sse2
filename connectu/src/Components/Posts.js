@@ -1,8 +1,13 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import api from "./api";
 
 function Posts() {
   const [posts, setPosts] = useState([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const observer = useRef();
+  const lastPostElementRef = useRef(null);
+
   const [comments, setComments] = useState({});
   const [interests, setInterests] = useState([]);
   const [selectedInterests, setSelectedInterests] = useState([]);
@@ -11,22 +16,6 @@ function Posts() {
   const [showCommentsForPost, setShowCommentsForPost] = useState({}); 
   const [newComment, setNewComment] = useState(''); 
   const [addingCommentToPostId, setAddingCommentToPostId] = useState(null); 
-
-  useEffect(() => {
-    api.get("/api/enhanced-xposts", {
-      params: {
-        num: 10,
-        sortField: 'last_update_timestamp',
-        sortOrder: 'asc'
-      }
-    })
-    .then(response => {
-      setPosts(response.data.posts);
-      const allInterests = new Set(response.data.posts.flatMap(post => post.interest));
-      setInterests([...allInterests]);
-    })
-    .catch(error => console.error("Error fetching posts:", error));
-  }, []);
 
   const handleInterestClick = (interest) => { 
     if (selectedInterests.includes(interest)) {
@@ -115,6 +104,60 @@ function Posts() {
     .catch(error => console.error(`Error adding comment to post ${postId}:`, error));
   };
 
+  useEffect(() => {
+    const fetchPosts = async () => {
+      try {
+        const response = await api.get("/api/enhanced-xposts", {
+          params: {
+            num: 10,
+            page: currentPage, // Updated to send current page
+            sortField: 'last_update_timestamp',
+            sortOrder: 'asc',
+          },
+        });
+  
+        if (currentPage === 1) {
+          setPosts(response.data.posts); // Directly set posts if it's the first page
+        } else {
+          setPosts(prevPosts => [...new Set([...prevPosts, ...response.data.posts])]); // Combine new posts, avoiding duplicates
+        }
+  
+        setHasMore(response.data.posts.length > 0);
+        const fetchedInterests = new Set(response.data.posts.flatMap(post => post.interest));
+        setInterests(prevInterests => [...new Set([...prevInterests, ...fetchedInterests])]);
+      } catch (error) {
+        console.error("Error fetching posts:", error);
+      }
+    };
+  
+    fetchPosts();
+  }, [currentPage]); // Rely on currentPage to fetch posts
+  
+  
+
+  useEffect(() => {
+    if (!hasMore) return; // Do not observe if there are no more posts to load
+
+    if (observer.current) observer.current.disconnect(); // Reset the observer on currentPage change
+
+    const callback = function(entries) {
+      if (entries[0].isIntersecting) {
+        setCurrentPage(prevPage => prevPage + 1); // Increment page to load more posts
+      }
+    };
+
+    observer.current = new IntersectionObserver(callback);
+    if (lastPostElementRef.current) {
+      observer.current.observe(lastPostElementRef.current);
+    }
+
+    // Cleanup function to disconnect the observer
+    return () => {
+      if (observer.current) observer.current.disconnect();
+    };
+  }, [hasMore, lastPostElementRef.current]); // Depend on hasMore and lastPostElementRef.current
+
+
   return (
     <div>
       <h1>ConnectU Newsfeed</h1>
@@ -134,26 +177,29 @@ function Posts() {
       <div>
         <strong>Filter by Interests:</strong> 
         {interests.map((interest, index) => (
-          <button key={index} onClick={() => handleInterestClick(interest)} style={{ margin: '5px', backgroundColor: selectedInterests.includes(interest) ? '#ADD8E6' : '' }}> {/* 4. Use selectedInterests */}
+          <button key={index} onClick={() => handleInterestClick(interest)} style={{ margin: '5px', backgroundColor: selectedInterests.includes(interest) ? '#ADD8E6' : '' }}>
             {interest}
           </button>
         ))}
       </div>
-      {getFilteredAndSortedPosts().map((post) => (
-        <div key={post.postid} style={{ marginBottom: '20px', border: '1px solid #ccc', padding: '10px' }}>
+      {getFilteredAndSortedPosts().map((post, index) => (
+        <div 
+          key={post.postid} 
+          style={{ marginBottom: '20px', border: '1px solid #ccc', padding: '10px' }}
+          ref={index === getFilteredAndSortedPosts().length - 1 ? lastPostElementRef : null} // Set ref to the last post element for infinite scroll
+        >
           <h2>{post.header} (#{post.postid})</h2>
           <p>{post.description}</p>
           <p>Interest: {post.interest}</p> 
           <p>Posted by: {post.firstname} {post.lastname} ({post.userid}) at {post.university} on {new Date(post.create_timestamp).toLocaleDateString()}</p>
           <p>Likes: {post.number_of_likes}</p>
-          <button onClick={() => subscribe(post.postid)}>Click to Like</button> 
+          <button onClick={() => subscribe(post.postid)}>Click to Like</button>
           <button onClick={() => toggleCommentsVisibility(post.postid)}>
             {showCommentsForPost[post.postid] ? 'Hide Comments' : 'Show Comments'}
           </button>
           {showCommentsForPost[post.postid] && (
             <div>
               <strong>Comments:</strong>
-              {/* Comments list */}
               {comments[post.postid]?.map((comment) => (
                 <div key={comment.commentid} style={{ marginTop: '5px', paddingLeft: '10px' }}>
                   <p>{comment.comment}</p>
@@ -167,7 +213,7 @@ function Posts() {
                     onChange={(e) => setNewComment(e.target.value)}
                     placeholder="Write a comment..."
                   />
-                  <button onClick={() => addComment(post.postid)}>Submit Comment</button>
+                  <button onClick={() => addComment(post.postid, newComment)}>Submit Comment</button>
                 </>
               )}
               <button onClick={() => setAddingCommentToPostId(post.postid)}>Add Comment</button>
@@ -175,8 +221,9 @@ function Posts() {
           )}
         </div>
       ))}
+      {!hasMore && <p>No more posts to load</p>}
     </div>
-  );
+  );  
 }
 
 export default Posts;
